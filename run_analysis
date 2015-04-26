@@ -1,0 +1,57 @@
+##The below script is written to create a tiny cleaned data set obtained by preprocessing a UCI HAR dataset.
+##The data set consists of two datasets-train and test each in separate folder.
+#Check whether the working directory has required dataset or not and if the data set is not present, set the working directory.
+
+if(getwd() != "~/datasciencejhu/getting and cleaning/UCI HAR Dataset")
+setwd("~/datasciencejhu/getting and cleaning/UCI HAR Dataset")
+
+#Read the 'features.txt' and 'activity_labels.txt' having the description of labels for different features of measurement taken and activities performed by subjects.
+features=read.table('features.txt')
+activity_labels=read.table('activity_labels.txt')
+
+#Navigate to train data folder and load the 'X_train.txt','y_train.txt','subject_train.txt'.Each of this files has observations for different readings and their corresponding activity and subject labels in the remaining texts. The same is with test data folder.
+setwd("~/datasciencejhu/getting and cleaning/UCI HAR Dataset/train")
+training=read.table('X_train.txt')
+training_labels=read.table('y_train.txt')
+subject_training=read.table('subject_train.txt')
+
+setwd("~/datasciencejhu/getting and cleaning/UCI HAR Dataset/test")
+test=read.table('X_test.txt')
+test_labels=read.table('y_test.txt')
+subject_test=read.table('subject_test.txt')
+
+#Combine the two data sets by using rbind() to merge them on a row basis
+finalset=rbind(training,test)
+finalset_labels=rbind(training_labels,test_labels)
+finalset_subjects=rbind(subject_training,subject_test)
+#Labelling the data set with descriptive variable names using the help of data present in features.txt file.
+colnames(finalset)=t(features[,2])
+
+# Separate the columns having data related to mean() and std(), this has been acheived by searvhing for these patterns in column names of the finaldataset.
+
+finalset_mean_std=cbind(finalset[,grep('mean()',colnames(finalset),fixed=TRUE)],finalset[,grep('std()',colnames(finalset),fixed=TRUE)])
+#Add the corresponding values of activities and subject details to our final data set.
+finalset_mean_std=cbind(finalset_subjects,finalset_labels,finalset_mean_std)
+#Adding the column names to the newly added subject and activity data
+colnames(finalset_mean_std)[2]='activity_labels'
+colnames(finalset_mean_std)[1]='subjects'
+
+#Change the activities performed with meaningful convention by changing the data to descriptive activity names, the data related to this can be found from 'activities_label.txt' file.
+finalset_mean_std$activity_labels[finalset_mean_std$activity_labels==1]='WALKING'
+finalset_mean_std$activity_labels[finalset_mean_std$activity_labels==2]='WALKING_UPSTAIRS'
+finalset_mean_std$activity_labels[finalset_mean_std$activity_labels==3]='WALKING_DOWNSTAIRS'
+finalset_mean_std$activity_labels[finalset_mean_std$activity_labels==4]='SITTING'
+finalset_mean_std$activity_labels[finalset_mean_std$activity_labels==5]='STANDING'
+finalset_mean_std$activity_labels[finalset_mean_std$activity_labels==6]='LAYING'
+
+#Factorize the data sothat it will be easy for performing grouping functions.
+finalset_mean_std[2]=factor(finalset_mean_std[[2]])
+
+finalset_mean_std[1]=factor(finalset_mean_std[[1]])
+library(dplyr)
+#Finding the mean of all individual rows for each activity_label and subject
+tidydataset= finalset_mean_std %>% group_by(activity_labels,subjects) %>% summarise_each(funs(mean))
+
+#Writing the output of the above data to a tidydataset
+write.table(tidydataset,file='tidydataset.txt',row.names = FALSE)
+
