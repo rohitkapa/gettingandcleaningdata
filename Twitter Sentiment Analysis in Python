@@ -1,0 +1,208 @@
+#get twitter data
+
+import argparse
+import urllib
+import json
+import os
+import oauth2
+
+class TwitterData:
+    def parse_config(self):
+        config = {}
+        # from file args
+        if os.path.exists('config.json'):
+            with open('config.json') as f:
+                config.update(json.load(f))
+        else:
+            # may be from command line
+            parser = argparse.ArgumentParser()
+
+            parser.add_argument('-ck', '--consumer_key', default=None, help='Your developper `Consumer Key`')
+            parser.add_argument('-cs', '--consumer_secret', default=None, help='Your developper `Consumer Secret`')
+            parser.add_argument('-at', '--access_token', default=None, help='A client `Access Token`')
+            parser.add_argument('-ats', '--access_token_secret', default=None, help='A client `Access Token Secret`')
+
+            args_ = parser.parse_args()
+            def val(key):
+                return config.get(key)\
+                    or getattr(args_, key)\
+                    or raw_input('Your developper `%s`: ' % key)
+            config.update({
+                'consumer_key': val('consumer_key'),
+                'consumer_secret': val('consumer_secret'),
+                'access_token': val('access_token'),
+                'access_token_secret': val('access_token_secret'),
+            })
+        # should have something now
+        return config
+    #end
+
+    def oauth_req(self, url, http_method="GET", post_body=None,
+                  http_headers=None):
+        config = self.parse_config()
+        consumer = oauth2.Consumer(key=config.get('consumer_key'), secret=config.get('consumer_secret'))
+        token = oauth2.Token(key=config.get('access_token'), secret=config.get('access_token_secret'))
+        client = oauth2.Client(consumer, token)
+
+        resp, content = client.request(
+            url,
+            method=http_method,
+            body=post_body or '',
+            headers=http_headers
+        )
+        return content
+    #end
+
+    #start getTwitterData
+    def getData(self, keyword, params = {}):
+        maxTweets = 50
+        url = 'https://api.twitter.com/1.1/search/tweets.json?'
+        data = {'q': keyword, 'lang': 'en', 'result_type': 'recent', 'count': maxTweets, 'include_entities': 0}
+
+        #Add if additional params are passed
+        if params:
+            for key, value in params.iteritems():
+                data[key] = value
+
+        url += urllib.urlencode(data)
+
+        response = self.oauth_req(url)
+        jsonData = json.loads(response)
+        tweets = []
+        if 'errors' in jsonData:
+            print "API Error"
+            print jsonData['errors']
+        else:
+            for item in jsonData['statuses']:
+                tweets.append(item['text'])
+        return tweets
+    #end
+#end class
+
+## Usage
+## =====
+## td = TwitterData()
+## print td.getData('barca')
+
+#Preprocess Tweets
+
+#import regex
+import re
+
+#start process_tweet
+def processTweet(tweet):
+    # process the tweets
+
+    #Convert to lower case
+    tweet = tweet.lower()
+    #Convert www.* or https?://* to URL
+    tweet = re.sub('((www\.[^\s]+)|(https?://[^\s]+))','URL',tweet)
+    #Convert @username to AT_USER
+    tweet = re.sub('@[^\s]+','AT_USER',tweet)
+    #Remove additional white spaces
+    tweet = re.sub('[\s]+', ' ', tweet)
+    #Replace #word with word
+    tweet = re.sub(r'#([^\s]+)', r'\1', tweet)
+    #trim
+    tweet = tweet.strip('\'"')
+    return tweet
+#end
+
+#Read the tweets one by one and process it
+fp = open('data/sampleTweets.txt', 'r')
+line = fp.readline()
+
+while line:
+    processedTweet = processTweet(line)
+    print processedTweet
+    line = fp.readline()
+#end loop
+fp.close()
+
+#Filtering tweets for Feature Vector
+#initialize stopWords
+stopWords = []
+
+#start replaceTwoOrMore
+def replaceTwoOrMore(s):
+    #look for 2 or more repetitions of character and replace with the character itself
+    pattern = re.compile(r"(.)\1{1,}", re.DOTALL)
+    return pattern.sub(r"\1\1", s)
+#end
+
+#start getStopWordList
+def getStopWordList(stopWordListFileName):
+    #read the stopwords file and build a list
+    stopWords = []
+    stopWords.append('AT_USER')
+    stopWords.append('URL')
+
+    fp = open(stopWordListFileName, 'r')
+    line = fp.readline()
+    while line:
+        word = line.strip()
+        stopWords.append(word)
+        line = fp.readline()
+    fp.close()
+    return stopWords
+#end
+
+#start getfeatureVector
+def getFeatureVector(tweet):
+    featureVector = []
+    #split tweet into words
+    words = tweet.split()
+    for w in words:
+        #replace two or more with two occurrences
+        w = replaceTwoOrMore(w)
+        #strip punctuation
+        w = w.strip('\'"?,.')
+        #check if the word stats with an alphabet
+        val = re.search(r"^[a-zA-Z][a-zA-Z0-9]*$", w)
+        #ignore if it is a stop word
+        if(w in stopWords or val is None):
+            continue
+        else:
+            featureVector.append(w.lower())
+    return featureVector
+#end
+
+#Read the tweets one by one and process it
+fp = open('data/sampleTweets.txt', 'r')
+line = fp.readline()
+
+st = open('data/feature_list/stopwords.txt', 'r')
+stopWords = getStopWordList('data/feature_list/stopwords.txt')
+
+while line:
+    processedTweet = processTweet(line)
+    featureVector = getFeatureVector(processedTweet)
+    print featureVector
+    line = fp.readline()
+#end loop
+fp.close()
+
+#extract features from tweets
+
+#Read the tweets one by one and process it
+inpTweets = csv.reader(open('data/sampleTweets.csv', 'rb'), delimiter=',', quotechar='|')
+stopWords = getStopWordList('data/feature_list/stopwords.txt')
+featureList = []
+
+# Get tweet words
+tweets = []
+for row in inpTweets:
+    sentiment = row[0]
+    tweet = row[1]
+    processedTweet = processTweet(tweet)
+    featureVector = getFeatureVector(processedTweet, stopWords)
+    featureList.extend(featureVector)
+    tweets.append((featureVector, sentiment));
+#end loop
+
+# Remove featureList duplicates
+featureList = list(set(featureList))
+
+# Extract feature vector for all tweets in one shote
+training_set = nltk.classify.util.apply_features(extract_features, tweets)
+
