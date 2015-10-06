@@ -1,0 +1,24 @@
+# x is the file which holds the twitter data.
+x=substring(r[],19)
+
+dat <- x
+# convert string to vector of words
+dat2 <- unlist(strsplit(dat, split=", "))
+# find indices of words with non-ASCII characters
+dat3 <- grep("dat2", iconv(dat2, "latin1", "ASCII", sub="dat2"))
+# subset original vector of words to exclude words with non-ASCII char
+dat4 <- dat2[-dat3]
+# convert vector back to a string
+dat5 <- paste(dat4, collapse = ", ")
+c=Corpus((VectorSource(dat5)))
+c=tm_map(c,tolower)
+c=tm_map(c,PlainTextDocument)
+c=tm_map(c,removePunctuation)
+
+findFreqTerms(freq,lowfreq = 20)
+c=tm_map(c,removeWords,stopwords('english'))
+freq=DocumentTermMatrix(c)
+sparse=removeSparseTerms(freq,0.90)
+textsparse=as.data.frame(as.matrix(sparse))
+colnames(textsparse)=make.names((colnames(textsparse)))
+wordcloud(colnames(textsparse),colSums(textsparse),scale=c(2,0.25))
